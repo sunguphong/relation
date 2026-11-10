@@ -313,7 +313,7 @@ let db = null, cryptoKey = null, saveTimer;
 /* ---------- 구글시트 동기화 ----------
    Apps Script 웹 앱(tools/apps-script.gs)에 암호화된 데이터를 그대로 보낸다. 시트에는 암호문만 저장된다.
    rev(버전 번호)로 다른 기기에서 먼저 저장했는지 확인하고, 쓰기는 비밀번호에서 나온 토큰이 맞을 때만 허용된다. */
-const SYNC_URL = '';
+const SYNC_URL = 'https://script.google.com/macros/s/AKfycbyfSUSUIkKph5BkkpOW7g9qmVf7T2b0kcVT0jv6LRotl3HdDCzsFSVIo9sC-WyHmNw/exec';
 const SYNC_REV = 'kwanxi.rev', DIRTY = 'kwanxi.dirty';
 let syncTimer = null, syncing = false, syncToken = null, prevToken = null;
 const ls = {
