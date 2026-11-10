@@ -242,7 +242,6 @@ table.sheet{border-collapse:separate;border-spacing:0;width:max-content;min-widt
     </select>
     <div class="seg" id="viewSeg">
       <button data-v="card" class="on">카드</button>
-      <button data-v="table">표</button>
       <button data-v="sheet">시트</button>
     </div>
   </div>
@@ -451,7 +450,7 @@ function renderList(){
           <span class="meter" title="정보 채움 ${fill(p)}/${fillMax(p)}"><i style="width:${Math.round(fill(p)/fillMax(p)*100)}%"></i></span></div>
       </div>`;
     }).join('')}</div>`;
-  } else if (state.view === 'sheet'){
+  } else {
     // 구글시트처럼 사람이 열, 항목이 행. 칸을 눌러 바로 고친다
     const cell = (p, f) => (f.only && f.only !== p.id)
       ? '<td class="off"></td>'
@@ -469,13 +468,6 @@ function renderList(){
         <tr><th>기타<small>한 줄에 하나</small></th>${list.map(p => `<td><textarea class="sc" data-id="${p.id}" data-notes rows="2">${esc(p.notes.map(n=>n.text).join('\n'))}</textarea></td>`).join('')}</tr>
       </tbody></table></div>`;
     main.querySelectorAll('.sc').forEach(autosize);
-  } else {
-    const cols = allFields().filter(f=>f.k!=='birthday');
-    main.innerHTML = `<div class="tbl-wrap"><table class="ptable"><thead><tr><th>이름</th>${cols.map(f=>`<th>${f.label}</th>`).join('')}<th>메모</th></tr></thead><tbody>
-      ${list.map(p => `<tr data-id="${p.id}"><td class="nm">${p.fav?'<span class="star">★</span> ':''}${esc(p.name)}</td>
-        ${cols.map(f => { const v = f.k==='born' ? bornText(p.born) : p[f.k]; return v ? `<td><div class="clip">${esc(v)}</div></td>` : '<td class="nil">—</td>'; }).join('')}
-        <td>${p.notes.length ? `<div class="clip">${esc(p.notes.map(n=>n.text).join(' / '))}</div>` : '<span class="nil">—</span>'}</td></tr>`).join('')}
-    </tbody></table></div>`;
   }
 }
 function render(){ renderStats(); renderChips(); renderList(); }
@@ -536,7 +528,7 @@ function autosize(t){ t.style.height='auto'; t.style.height = t.scrollHeight + 2
 document.addEventListener('click', e => {
   const f = e.target.closest('[data-f]');
   if (f){ state.filter = (state.filter===f.dataset.f && f.dataset.f!=='all') ? 'all' : f.dataset.f; render(); return; }
-  const c = e.target.closest('.card, .ptable tbody tr');
+  const c = e.target.closest('.card');
   if (c){ openDrawer(c.dataset.id); return; }
   const o = e.target.closest('[data-open]');
   if (o){ openDrawer(o.dataset.open); return; }
@@ -729,7 +721,7 @@ $('#btnLock').addEventListener('click', async () => {
   location.reload();
 });
 
-try{ const v = localStorage.getItem(KEY+'.view'); if (v) { state.view = v; document.querySelectorAll('#viewSeg button').forEach(x=>x.classList.toggle('on', x.dataset.v===v)); } }catch(e){}
+try{ const v = localStorage.getItem(KEY+'.view'); if (v === 'card' || v === 'sheet') { state.view = v; document.querySelectorAll('#viewSeg button').forEach(x=>x.classList.toggle('on', x.dataset.v===v)); } }catch(e){}
 boot();
 </script>
 </body>
