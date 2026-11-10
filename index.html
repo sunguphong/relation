@@ -192,6 +192,52 @@ table.sheet{border-collapse:separate;border-spacing:0;width:max-content;min-widt
 .sc{display:block;width:100%;min-width:150px;border:0;background:none;padding:7px 10px;resize:none;outline:none;overflow:hidden;font-size:13.5px;line-height:1.45}
 .sc:focus{box-shadow:inset 0 0 0 2px var(--accent);background:var(--surface)}
 
+/* admin */
+.admin{position:fixed;inset:0;background:var(--bg);z-index:15;overflow:auto;display:none}
+.admin.on{display:block}
+body.locked .admin{display:none}
+.admin-in{max-width:1200px;margin:0 auto;padding:24px 16px 60px}
+.admin-head{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:20px}
+.admin-head h2{margin:0;font-size:22px}
+.admin-head h2 small{display:block;font-size:13px;color:var(--muted);font-weight:500}
+.admin h3{font-size:15px;margin:28px 0 12px}
+.infra{display:grid;grid-template-columns:1fr 70px 1fr 70px 1fr 70px 1fr;align-items:stretch}
+.node{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:14px;box-shadow:var(--shadow);display:flex;flex-direction:column;gap:8px;min-width:0}
+.node-top{display:flex;align-items:center;gap:8px}
+.node-num{width:24px;height:24px;border-radius:50%;background:var(--accent);color:#fff;font-size:12px;font-weight:700;display:grid;place-items:center;flex:none}
+.node b{font-size:15px}
+.node .where{font-size:12px;color:var(--muted);word-break:break-all}
+.node ul{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:6px}
+.node li{font-size:12.5px;background:var(--surface2);border:1px solid var(--line);border-radius:8px;padding:5px 8px;word-break:break-all}
+.node li code{font-size:11.5px;color:var(--accent)}
+.node li span{display:block;color:var(--muted);font-size:11.5px}
+.node.sub{margin-top:12px;border-style:dashed;box-shadow:none}
+.arrow{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;padding:0 4px;text-align:center}
+.arrow i{font-style:normal;font-size:22px;color:var(--accent);line-height:1}
+.arrow small{font-size:11px;color:var(--muted);line-height:1.3}
+.col{display:flex;flex-direction:column}
+.legend{display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:var(--muted);margin-top:12px}
+.lock-tag{display:inline-block;font-size:11px;padding:1px 6px;border-radius:6px;background:var(--accent-soft);color:var(--accent);font-weight:600;margin-left:4px}
+.flow-wrap{overflow-x:auto;border:1px solid var(--line);border-radius:12px}
+.flow{width:100%;border-collapse:collapse;font-size:13.5px;background:var(--surface)}
+.flow th,.flow td{padding:10px 12px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}
+.flow tr:last-child td{border-bottom:0}
+.flow th{background:var(--surface2);color:var(--muted);font-size:12.5px;font-weight:600}
+.flow td:first-child{font-weight:600;white-space:nowrap}
+.kpis{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px}
+.kpi{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:12px 14px}
+.kpi span{display:block;font-size:12px;color:var(--muted)}
+.kpi b{font-size:18px;font-variant-numeric:tabular-nums;word-break:break-all}
+.kpi b.warn{color:var(--warn)}
+.kpi b.ok{color:var(--ok)}
+.admin-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+.admin-actions a.btn{text-decoration:none;color:var(--ink)}
+@media (max-width:900px){
+  .infra{grid-template-columns:1fr}
+  .arrow{flex-direction:row;padding:6px 0}
+  .arrow i{transform:rotate(90deg)}
+}
+
 .toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(20px);background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:10px;font-size:14px;opacity:0;transition:.2s;z-index:20;pointer-events:none}
 .toast.on{opacity:1;transform:translateX(-50%)}
 
@@ -220,6 +266,7 @@ table.sheet{border-collapse:separate;border-spacing:0;width:max-content;min-widt
   <header>
     <h1>꽌시 노트<small>사람을 기억하는 작은 수첩 <span id="syncState" class="sync" hidden></span></small></h1>
     <div class="actions">
+      <button class="btn ghost" id="btnAdmin">관리자</button>
       <button class="btn ghost" id="btnLock" title="잠그고 로그인 유지 해제">잠금</button>
       <button class="btn ghost" id="btnImport">가져오기</button>
       <button class="btn ghost" id="btnCsv">CSV</button>
@@ -255,6 +302,7 @@ table.sheet{border-collapse:separate;border-spacing:0;width:max-content;min-widt
 
 <div class="backdrop" id="backdrop"></div>
 <aside class="drawer" id="drawer" aria-hidden="true"></aside>
+<div class="admin" id="admin" aria-hidden="true"><div class="admin-in" id="adminBody"></div></div>
 <div class="toast" id="toast"></div>
 
 <script>
@@ -803,6 +851,116 @@ drawer.addEventListener('change', async e => {
   try { p.photo = await toPhoto(file); persist(); render(); renderDrawer(); }
   catch(err){ toast('이 사진은 읽을 수 없어요'); }
 });
+
+/* ---------- 관리자: 인프라 구성도와 현재 상태 ---------- */
+const REPO_URL = 'https://github.com/sunguphong/relation';
+const SITE_URL = 'https://sunguphong.github.io/relation/';
+const kb = n => n >= 1048576 ? (n/1048576).toFixed(2) + ' MB' : Math.max(1, Math.round(n/1024)) + ' KB';
+function node(num, title, where, items, cls=''){
+  return `<div class="node ${cls}"><div class="node-top">${num ? `<span class="node-num">${num}</span>` : ''}<b>${title}</b></div>
+    <div class="where">${where}</div>
+    <ul>${items.map(([t, d]) => `<li>${t}${d ? `<span>${d}</span>` : ''}</li>`).join('')}</ul></div>`;
+}
+const arrow = (sym, label) => `<div class="arrow"><i>${sym}</i><small>${label}</small></div>`;
+const kpi = (label, val, cls='', id='') => `<div class="kpi"><span>${label}</span><b class="${cls}" ${id ? `id="${id}"` : ''}>${val}</b></div>`;
+async function renderAdmin(){
+  const local = ls.get(ENC_KEY) || '';
+  const dirty = !!ls.get(DIRTY);
+  const L = '<span class="lock-tag">암호화</span>';
+  $('#adminBody').innerHTML = `
+    <div class="admin-head"><h2>관리자<small>사이트 구성과 데이터 저장 위치</small></h2><button class="btn" id="adminClose">닫기</button></div>
+
+    <h3>인프라 구성도</h3>
+    <div class="infra">
+      ${node(1, '개발 PC', 'D:\\ANTI\\relation', [
+        ['<code>index.html</code>', '사이트 전체 (화면·기능·암호화 코드)'],
+        ['<code>tools/set-password.mjs</code>', '비밀번호 설정 → 초기 데이터 암호화'],
+        ['<code>tools/seed.local.json</code>', '구글시트 원본 데이터 (GitHub에 안 올라감)'],
+        ['<code>tools/apps-script.gs</code>', '구글시트에 붙여 넣는 스크립트 원본'],
+      ])}
+      ${arrow('→', 'git push')}
+      ${node(2, 'GitHub', 'sunguphong/relation · 공개 저장소', [
+        ['저장소', '소스 파일과 커밋 기록 보관'],
+        ['GitHub Pages', '웹 호스팅 · ' + SITE_URL],
+        ['초기 데이터 11명' + L, 'index.html 안 SEED_ENC'],
+      ])}
+      ${arrow('→', 'HTTPS로<br>페이지 제공')}
+      <div class="col">
+        ${node(3, '브라우저 (PC·모바일)', '사용자가 보는 화면', [
+          ['비밀번호 → 키 생성', 'PBKDF2-SHA256 20만 회'],
+          ['데이터 암호화·복호화', 'AES-GCM 256 (Web Crypto)'],
+          ['사진 축소', '정사각형 320px JPEG'],
+        ])}
+        ${node('', '이 기기 저장소', 'localStorage · 기기·브라우저마다 따로', [
+          ['데이터 캐시' + L, '인터넷이 끊겨도 열림'],
+          ['로그인 유지 키', '체크했을 때만 저장'],
+        ], 'sub')}
+      </div>
+      ${arrow('⇄', '암호문 저장·불러오기<br>(Apps Script 웹 앱)')}
+      ${node(4, 'Google', '구글 계정 · 꽌시노트 동기화 시트', [
+        ['Apps Script 웹 앱', 'doGet 불러오기 · doPost 저장'],
+        ['시트 <code>sync</code> 탭' + L, 'A1 버전 번호, A2부터 암호문 조각'],
+        ['쓰기 토큰', '비밀번호에서 만든 값이 맞아야 저장'],
+      ])}
+    </div>
+    <div class="legend"><span>${L} 표시는 비밀번호 없이는 읽을 수 없는 상태로만 저장된다는 뜻입니다.</span></div>
+
+    <h3>기능별 동작</h3>
+    <div class="flow-wrap"><table class="flow">
+      <thead><tr><th>기능</th><th>어디서</th><th>어떻게</th></tr></thead>
+      <tbody>
+        <tr><td>로그인</td><td>브라우저</td><td>입력한 비밀번호로 키를 만들어 초기 데이터가 풀리는지 확인. 비밀번호는 어디로도 보내지 않음</td></tr>
+        <tr><td>저장</td><td>브라우저 → 이 기기 → 구글시트</td><td>고치면 0.3초 뒤 이 기기에 암호화 저장, 1.2초 뒤 구글시트로 전송</td></tr>
+        <tr><td>다른 기기 반영</td><td>구글시트 → 브라우저</td><td>사이트를 열 때와 다른 탭에서 돌아올 때 버전 번호를 비교해 새 내용을 가져옴</td></tr>
+        <tr><td>충돌 처리</td><td>Apps Script</td><td>저장 요청의 버전 번호가 시트와 다르면 거절 → 어느 쪽 내용을 쓸지 물어봄</td></tr>
+        <tr><td>사진</td><td>브라우저</td><td>320px로 줄여 데이터에 포함 → 같은 경로로 암호화·동기화</td></tr>
+        <tr><td>백업·가져오기</td><td>브라우저 ↔ 내 PC 파일</td><td>JSON 파일로 내려받기(암호화 안 됨) / 파일로 전체 교체</td></tr>
+        <tr><td>비밀번호 변경</td><td>개발 PC → GitHub</td><td><code>node tools/set-password.mjs 새비밀번호</code> 후 커밋·푸시. 쓰던 기기는 처음 한 번 이전 비밀번호를 물어봄</td></tr>
+        <tr><td>사이트 수정 배포</td><td>개발 PC → GitHub Pages</td><td>git push 하면 1~2분 뒤 자동 반영</td></tr>
+      </tbody>
+    </table></div>
+
+    <h3>현재 상태 (이 기기 기준)</h3>
+    <div class="kpis">
+      ${kpi('등록된 사람', db.people.length + '명')}
+      ${kpi('사진 등록', db.people.filter(p => p.photo).length + '명')}
+      ${kpi('직접 추가한 분류 / 항목', db.sections.length + ' / ' + db.fields.length)}
+      ${kpi('데이터 크기 (암호문)', kb(local.length))}
+      ${kpi('이 기기 동기화 버전', ls.get(SYNC_REV) ?? '없음')}
+      ${kpi('구글시트 버전', SYNC_URL ? '확인 중…' : '연결 안 됨', '', 'aRemoteRev')}
+      ${kpi('구글시트로 안 올라간 수정', dirty ? '있음' : '없음', dirty ? 'warn' : 'ok')}
+      ${kpi('이 기기 로그인 유지', ls.get(KEYSTORE) ? '켜짐' : '꺼짐')}
+    </div>
+    <div class="admin-actions">
+      ${SYNC_URL ? '<button class="btn" id="aPull">구글시트에서 다시 불러오기</button><button class="btn" id="aPush">이 기기 내용을 구글시트에 올리기</button>' : ''}
+      <a class="btn ghost" href="${REPO_URL}" target="_blank" rel="noopener">GitHub 저장소 ↗</a>
+    </div>`;
+  if (!SYNC_URL) return;
+  const el = () => $('#aRemoteRev');
+  try {
+    const r = await fetchRemote(true), mine = +ls.get(SYNC_REV) || 0;
+    if (!el()) return;
+    el().textContent = r.rev + (r.rev === mine ? ' (최신)' : r.rev > mine ? ' (이 기기보다 새로움)' : ' (이 기기가 더 새로움)');
+    el().className = r.rev === mine ? 'ok' : 'warn';
+  } catch(e){ if (el()){ el().textContent = '연결 실패'; el().className = 'warn'; } }
+}
+function openAdmin(){ closeDrawer(); $('#admin').classList.add('on'); $('#admin').setAttribute('aria-hidden','false'); renderAdmin(); }
+function closeAdmin(){ $('#admin').classList.remove('on'); $('#admin').setAttribute('aria-hidden','true'); }
+$('#btnAdmin').addEventListener('click', openAdmin);
+$('#admin').addEventListener('click', async e => {
+  if (e.target.closest('#adminClose')) return closeAdmin();
+  if (e.target.closest('#aPull')){
+    if (!confirm('구글시트 내용으로 이 기기 데이터를 바꿀까요?')) return;
+    try { toast(await pullRemote() ? '구글시트에서 불러왔어요' : '구글시트에 데이터가 없어요'); } catch(err){ toast('구글시트에 연결하지 못했어요'); }
+    renderAdmin();
+  }
+  if (e.target.closest('#aPush')){
+    if (!confirm('이 기기 내용으로 구글시트를 덮어쓸까요?\n다른 기기에서만 고친 내용은 사라져요.')) return;
+    await pushRemote(await encrypt(cryptoKey, SEED_ENC.salt, db), true);
+    renderAdmin();
+  }
+});
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && $('#admin').classList.contains('on')) closeAdmin(); });
 
 /* ---------- 잠금 ---------- */
 $('#lockForm').addEventListener('submit', async e => {
