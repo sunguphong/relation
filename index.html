@@ -116,6 +116,13 @@ td.nil{color:var(--line)}
 .frow:hover .fx,.fx:focus{opacity:1}
 .newfield{flex-wrap:wrap;padding-top:10px;border-top:1px solid var(--line);margin-top:6px}
 .newfield .grow{min-width:160px}
+.sec h3 .fx{font-size:16px}
+.sec:hover h3 .fx{opacity:1}
+.addbtn{display:block;width:100%;margin-top:6px;border:1px dashed var(--line);background:none;border-radius:8px;padding:7px;color:var(--muted);font-size:13px}
+.addbtn:hover{border-color:var(--accent);color:var(--accent)}
+.newsec{display:flex;gap:6px;padding:10px;border-style:dashed;background:none}
+.newsec input{flex:1;min-width:0;border:1px solid var(--line);background:var(--surface);border-radius:8px;padding:8px 10px;outline:none}
+.newsec input:focus{border-color:var(--accent)}
 .fin{width:100%;border:1px solid transparent;background:none;border-radius:8px;padding:4px 8px;resize:none;outline:none;overflow:hidden;line-height:1.5;min-height:30px}
 .fin:hover{background:var(--surface2)}
 .fin:focus{border-color:var(--accent);background:var(--surface)}
@@ -159,6 +166,28 @@ body:not(.locked) .lock{display:none}
 .av-edit::after{content:'사진';position:absolute;inset:0;border-radius:50%;background:rgba(0,0,0,.45);color:#fff;font-size:12px;font-weight:600;display:grid;place-items:center;opacity:0;transition:opacity .15s}
 .av-edit:hover::after{opacity:1}
 .linkbtn{border:0;background:none;padding:0;color:var(--muted);font-size:12px;text-decoration:underline}
+
+/* sheet view */
+:root{--sh-head:#fdf0d2; --sh-label:#f1dfe4; --sh-sec:#f4f1ea}
+@media (prefers-color-scheme: dark){ :root{--sh-head:#3a3221; --sh-label:#382a2f; --sh-sec:#25231f} }
+.sheet-wrap{max-height:calc(100vh - 140px)}
+table.sheet{border-collapse:separate;border-spacing:0;width:max-content;min-width:100%}
+.sheet th,.sheet td{border-right:1px solid var(--line);border-bottom:1px solid var(--line);padding:0;vertical-align:top}
+.sheet thead th{position:sticky;top:0;z-index:2}
+.sheet th.pname{background:var(--sh-head);color:var(--ink);font-size:16px;font-weight:700;padding:10px 12px;text-align:center;cursor:pointer;min-width:150px;white-space:nowrap}
+.sheet th.pname:hover{text-decoration:underline}
+.sheet th.pname .av{display:inline-grid;width:24px;height:24px;vertical-align:-6px;margin-right:6px}
+.sheet tbody th,.sheet .agerow th,.sheet th.corner{position:sticky;left:0;z-index:1;background:var(--sh-label);color:var(--ink);font-size:13px;font-weight:600;padding:8px 12px;text-align:center;white-space:nowrap;min-width:86px}
+.sheet th.corner{z-index:3;background:var(--ink)}
+.sheet th small{display:block;font-size:10.5px;font-weight:500;color:var(--muted)}
+.sheet .agerow th{top:45px;z-index:3}
+.sheet .agerow td{position:sticky;top:45px;z-index:1;background:var(--surface);font-size:13px;text-align:center;padding:6px 8px;color:var(--muted)}
+.sheet td{background:var(--surface);max-width:none}
+.sheet tr.secrow th{background:var(--sh-sec);color:var(--muted);font-size:12px;padding:4px 12px}
+.sheet tr.secrow td{background:var(--sh-sec)}
+.sheet td.off{background:repeating-linear-gradient(45deg,var(--surface),var(--surface) 6px,var(--surface2) 6px,var(--surface2) 12px)}
+.sc{display:block;width:100%;min-width:150px;border:0;background:none;padding:7px 10px;resize:none;outline:none;overflow:hidden;font-size:13.5px;line-height:1.45}
+.sc:focus{box-shadow:inset 0 0 0 2px var(--accent);background:var(--surface)}
 
 .toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(20px);background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:10px;font-size:14px;opacity:0;transition:.2s;z-index:20;pointer-events:none}
 .toast.on{opacity:1;transform:translateX(-50%)}
@@ -214,6 +243,7 @@ body:not(.locked) .lock{display:none}
     <div class="seg" id="viewSeg">
       <button data-v="card" class="on">카드</button>
       <button data-v="table">표</button>
+      <button data-v="sheet">시트</button>
     </div>
   </div>
   <div class="chips" id="chips" style="margin-bottom:16px"></div>
@@ -243,6 +273,8 @@ const FIELDS = [
   {k:'birthday',label:'생일',     sec:'life',  ph:'예: 3월 14일'},
 ];
 const SECTIONS = {basic:'기본 정보', taste:'취향', life:'가족·생활'};
+// 사용자가 추가한 분류: db.sections = [{k, label}] — 모든 사람에게 공통
+const allSections = () => [...Object.entries(SECTIONS), ...db.sections.map(s => [s.k, s.label, true])];
 // 사용자가 추가한 항목: db.fields = [{k, label, sec, only?}] — only가 있으면 그 사람에게만 보임
 const allFields = () => [...FIELDS, ...db.fields.filter(f=>!f.only)];
 const fieldsFor = p => [...FIELDS, ...db.fields.filter(f=>!f.only || f.only===p.id)];
@@ -271,7 +303,7 @@ async function encrypt(key, salt, obj){
 
 function uid(){ return Math.random().toString(36).slice(2,10) + Date.now().toString(36).slice(-4); }
 function normalize(d){
-  d.links ||= []; d.fields ||= []; d.people.forEach(p => { p.notes ||= []; });
+  d.links ||= []; d.fields ||= []; d.sections ||= []; d.people.forEach(p => { p.notes ||= []; });
   return d;
 }
 let db = null, cryptoKey = null, saveTimer;
@@ -419,9 +451,27 @@ function renderList(){
           <span class="meter" title="정보 채움 ${fill(p)}/${fillMax(p)}"><i style="width:${Math.round(fill(p)/fillMax(p)*100)}%"></i></span></div>
       </div>`;
     }).join('')}</div>`;
+  } else if (state.view === 'sheet'){
+    // 구글시트처럼 사람이 열, 항목이 행. 칸을 눌러 바로 고친다
+    const cell = (p, f) => (f.only && f.only !== p.id)
+      ? '<td class="off"></td>'
+      : `<td><textarea class="sc" data-id="${p.id}" data-k="${f.k}" rows="1">${esc(p[f.k]||'')}</textarea></td>`;
+    const rows = allSections().map(([s,title]) => {
+      const fs = [...FIELDS, ...db.fields].filter(f=>f.sec===s);
+      if (!fs.length) return '';
+      return `<tr class="secrow"><th>${esc(title)}</th><td colspan="${list.length}"></td></tr>` +
+        fs.map(f => `<tr><th>${esc(f.label)}${f.k==='born' ? '<small>나이</small>' : ''}</th>${list.map(p=>cell(p,f)).join('')}</tr>`).join('');
+    }).join('');
+    main.innerHTML = `<div class="tbl-wrap sheet-wrap"><table class="sheet">
+      <thead><tr><th class="corner"></th>${list.map(p => `<th class="pname" data-open="${p.id}" title="상세 보기">${p.photo ? av(p) : ''}${esc(p.name)}${p.fav?' <span class="star">★</span>':''}</th>`).join('')}</tr>
+        <tr class="agerow"><th>나이</th>${list.map(p => `<td>${esc(bornText(p.born))}</td>`).join('')}</tr></thead>
+      <tbody>${rows}
+        <tr><th>기타<small>한 줄에 하나</small></th>${list.map(p => `<td><textarea class="sc" data-id="${p.id}" data-notes rows="2">${esc(p.notes.map(n=>n.text).join('\n'))}</textarea></td>`).join('')}</tr>
+      </tbody></table></div>`;
+    main.querySelectorAll('.sc').forEach(autosize);
   } else {
     const cols = allFields().filter(f=>f.k!=='birthday');
-    main.innerHTML = `<div class="tbl-wrap"><table><thead><tr><th>이름</th>${cols.map(f=>`<th>${f.label}</th>`).join('')}<th>메모</th></tr></thead><tbody>
+    main.innerHTML = `<div class="tbl-wrap"><table class="ptable"><thead><tr><th>이름</th>${cols.map(f=>`<th>${f.label}</th>`).join('')}<th>메모</th></tr></thead><tbody>
       ${list.map(p => `<tr data-id="${p.id}"><td class="nm">${p.fav?'<span class="star">★</span> ':''}${esc(p.name)}</td>
         ${cols.map(f => { const v = f.k==='born' ? bornText(p.born) : p[f.k]; return v ? `<td><div class="clip">${esc(v)}</div></td>` : '<td class="nil">—</td>'; }).join('')}
         <td>${p.notes.length ? `<div class="clip">${esc(p.notes.map(n=>n.text).join(' / '))}</div>` : '<span class="nil">—</span>'}</td></tr>`).join('')}
@@ -433,7 +483,7 @@ function render(){ renderStats(); renderChips(); renderList(); }
 /* ---------- 상세 패널 ---------- */
 const person = id => db.people.find(p=>p.id===id);
 function openDrawer(id, focusName){
-  state.open = id; renderDrawer();
+  state.open = id; state.addSec = null; renderDrawer();
   $('#drawer').classList.add('on'); $('#backdrop').classList.add('on'); $('#drawer').setAttribute('aria-hidden','false');
   if (focusName) setTimeout(()=>{ const i=$('#dName'); i.focus(); i.select(); }, 260);
 }
@@ -444,16 +494,17 @@ function closeDrawer(){
 function renderDrawer(){
   const p = person(state.open); if (!p) return closeDrawer();
   const sub = [p.role, bornText(p.born)].filter(Boolean).join(' · ');
-  const secs = Object.entries(SECTIONS).map(([s,title]) => `<section class="sec"><h3>${title}</h3>
+  const secs = allSections().map(([s,title,custom]) => `<section class="sec"><h3><span>${esc(title)}</span>${custom ? `<button class="fx" data-del-sec="${s}" title="분류 삭제">×</button>` : ''}</h3>
     ${fieldsFor(p).filter(f=>f.sec===s).map(f => `<div class="frow"><label for="f_${f.k}">${esc(f.label)}${f.custom ? `<button class="fx" data-del-field="${f.k}" title="항목 삭제">×</button>` : ''}${f.only ? '<small>이 사람만</small>' : ''}</label>
       <div><textarea class="fin" id="f_${f.k}" data-k="${f.k}" rows="1" placeholder="${esc(f.ph||'')}">${esc(p[f.k]||'')}</textarea>
       </div></div>`).join('')}
-    ${s==='life' ? `<form class="addrow newfield" id="fieldForm">
-      <input class="grow" id="fieldLabel" placeholder="+ 새 항목 이름 (예: MBTI, 고향)">
-      <select id="fieldSec">${Object.entries(SECTIONS).map(([k,t])=>`<option value="${k}" ${k==='life'?'selected':''}>${t}</option>`).join('')}</select>
+    ${state.addSec === s ? `<form class="addrow newfield" id="fieldForm" data-sec="${s}">
+      <input class="grow" id="fieldLabel" placeholder="새 항목 이름 (예: MBTI, 고향)">
       <select id="fieldScope"><option value="all">모든 사람</option><option value="one">이 사람만</option></select>
-      <button class="btn">추가</button></form>` : ''}
-  </section>`).join('');
+      <button class="btn">추가</button><button type="button" class="btn ghost" data-add-sec="">취소</button></form>`
+      : `<button class="addbtn" data-add-sec="${s}">+ 항목 추가</button>`}
+  </section>`).join('') + `
+  <form class="sec newsec" id="secForm"><input class="grow" id="secLabel" placeholder="+ 새 분류 (예: 업무 스타일, 연애·결혼)"><button class="btn">분류 추가</button></form>`;
 
   const links = db.links.filter(l=>l.a===p.id||l.b===p.id).map(l => ({l, o: person(l.a===p.id?l.b:l.a)})).filter(x=>x.o);
   const others = db.people.filter(o=>o.id!==p.id).sort((a,b)=>a.name.localeCompare(b.name,'ko'));
@@ -485,8 +536,30 @@ function autosize(t){ t.style.height='auto'; t.style.height = t.scrollHeight + 2
 document.addEventListener('click', e => {
   const f = e.target.closest('[data-f]');
   if (f){ state.filter = (state.filter===f.dataset.f && f.dataset.f!=='all') ? 'all' : f.dataset.f; render(); return; }
-  const c = e.target.closest('.card, tbody tr');
+  const c = e.target.closest('.card, .ptable tbody tr');
   if (c){ openDrawer(c.dataset.id); return; }
+  const o = e.target.closest('[data-open]');
+  if (o){ openDrawer(o.dataset.open); return; }
+});
+// 시트 보기에서 칸 편집: 입력하는 동안은 목록을 다시 그리지 않아 커서가 유지된다
+$('#main').addEventListener('input', e => {
+  const t = e.target; if (!t.classList.contains('sc')) return;
+  const p = person(t.dataset.id); if (!p) return;
+  autosize(t);
+  if (t.dataset.k) p[t.dataset.k] = t.value;
+  else if (t.hasAttribute('data-notes')){
+    const old = p.notes;
+    p.notes = t.value.split('\n').map(s=>s.trim()).filter(Boolean)
+      .map(text => old.find(n=>n.text===text) || {id:uid(), text, date:today()});
+  }
+  persist();
+});
+$('#main').addEventListener('focusout', e => {
+  if (!e.target.classList.contains('sc')) return;
+  renderStats(); renderChips();
+  // 출생년도를 고치면 위쪽 나이 칸도 갱신
+  const p = person(e.target.dataset.id), i = visible().findIndex(x=>x.id===e.target.dataset.id);
+  if (e.target.dataset.k === 'born' && p && i >= 0) $('#main .agerow').querySelectorAll('td')[i].textContent = bornText(p.born);
 });
 $('#main').addEventListener('keydown', e => { if (e.key==='Enter' && e.target.classList.contains('card')) openDrawer(e.target.dataset.id); });
 $('#q').addEventListener('input', e => { state.q = e.target.value; renderList(); });
@@ -530,12 +603,22 @@ drawer.addEventListener('submit', e => {
     const label = $('#fieldLabel').value.trim(); if (!label) return;
     const one = $('#fieldScope').value === 'one';
     if (fieldsFor(p).some(f => f.label === label)) return toast(`'${label}' 항목이 이미 있어요`);
-    const f = {k:'c_'+uid(), label, sec:$('#fieldSec').value, custom:true};
+    const f = {k:'c_'+uid(), label, sec:e.target.dataset.sec, custom:true};
     if (one) f.only = p.id;
     db.fields.push(f);
+    state.addSec = null;
     persist(); render(); renderDrawer();
     $('#f_'+f.k).focus();
     toast(one ? `${p.name} 님에게 '${label}' 항목을 추가했어요` : `모든 사람에게 '${label}' 항목을 추가했어요`);
+  } else if (e.target.id === 'secForm'){
+    const label = $('#secLabel').value.trim(); if (!label) return;
+    if (allSections().some(([,t]) => t === label)) return toast(`'${label}' 분류가 이미 있어요`);
+    const k = 's_'+uid();
+    db.sections.push({k, label});
+    state.addSec = k;   // 바로 첫 항목을 넣을 수 있게 입력칸을 연다
+    persist(); renderDrawer();
+    $('#fieldLabel').focus();
+    toast(`'${label}' 분류를 추가했어요. 항목을 넣어 보세요`);
   } else if (e.target.id === 'linkForm'){
     const to = $('#linkTo').value; if (!to) return toast('연결할 사람을 고르세요');
     db.links.push({id:uid(), a:p.id, b:to, label:$('#linkLabel').value.trim()});
@@ -553,6 +636,22 @@ drawer.addEventListener('click', e => {
     if (!confirm(msg + (n ? `\n입력된 값 ${n}개도 함께 지워져요.` : ''))) return;
     db.fields = db.fields.filter(x=>x!==f);
     db.people.forEach(x => delete x[f.k]);
+    persist(); render(); renderDrawer(); return;
+  }
+  if (t.dataset.addSec !== undefined){
+    state.addSec = t.dataset.addSec || null;
+    renderDrawer();
+    if (state.addSec) $('#fieldLabel').focus();
+    return;
+  }
+  if (t.dataset.delSec){
+    const s = db.sections.find(x=>x.k===t.dataset.delSec); if (!s) return;
+    const fs = db.fields.filter(f=>f.sec===s.k);
+    const n = db.people.reduce((c,x) => c + fs.filter(f => (x[f.k]||'').trim()).length, 0);
+    if (!confirm(`'${s.label}' 분류를 삭제할까요?` + (fs.length ? `\n안의 항목 ${fs.length}개${n ? `와 입력된 값 ${n}개` : ''}도 모든 사람에게서 지워져요.` : ''))) return;
+    db.sections = db.sections.filter(x=>x!==s);
+    db.fields = db.fields.filter(f=>f.sec!==s.k);
+    db.people.forEach(x => fs.forEach(f => delete x[f.k]));
     persist(); render(); renderDrawer(); return;
   }
   if (t.closest('#dFav')){ p.fav = !p.fav; persist(); render(); renderDrawer(); return; }
