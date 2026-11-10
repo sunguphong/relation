@@ -146,6 +146,9 @@ td.nil{color:var(--line)}
 .link em{font-style:normal;color:var(--muted)}
 .link .x{border:0;background:none;color:var(--muted);padding:0 2px}
 .d-foot{display:flex;justify-content:space-between;align-items:center;font-size:12px;color:var(--muted)}
+.sync{margin-left:6px;font-size:12px}
+.sync[data-s=offline],.sync[data-s=conflict],.sync[data-s=error]{color:var(--warn)}
+
 /* lock */
 body.locked .wrap, body.locked .drawer, body.locked .backdrop{display:none}
 body:not(.locked) .lock{display:none}
@@ -215,7 +218,7 @@ table.sheet{border-collapse:separate;border-spacing:0;width:max-content;min-widt
 </div>
 <div class="wrap">
   <header>
-    <h1>꽌시 노트<small>사람을 기억하는 작은 수첩</small></h1>
+    <h1>꽌시 노트<small>사람을 기억하는 작은 수첩 <span id="syncState" class="sync" hidden></span></small></h1>
     <div class="actions">
       <button class="btn ghost" id="btnLock" title="잠그고 로그인 유지 해제">잠금</button>
       <button class="btn ghost" id="btnImport">가져오기</button>
@@ -306,35 +309,137 @@ function normalize(d){
   return d;
 }
 let db = null, cryptoKey = null, saveTimer;
+
+/* ---------- 구글시트 동기화 ----------
+   Apps Script 웹 앱(tools/apps-script.gs)에 암호화된 데이터를 그대로 보낸다. 시트에는 암호문만 저장된다.
+   rev(버전 번호)로 다른 기기에서 먼저 저장했는지 확인하고, 쓰기는 비밀번호에서 나온 토큰이 맞을 때만 허용된다. */
+const SYNC_URL = '';
+const SYNC_REV = 'kwanxi.rev', DIRTY = 'kwanxi.dirty';
+let syncTimer = null, syncing = false, syncToken = null, prevToken = null;
+const ls = {
+  get: k => { try { return localStorage.getItem(k); } catch(e){ return null; } },
+  set: (k, v) => { try { localStorage.setItem(k, v); } catch(e){} },
+  del: k => { try { localStorage.removeItem(k); } catch(e){} },
+};
+async function tokenOf(key){
+  const raw = new Uint8Array(await crypto.subtle.exportKey('raw', key));
+  const pre = new TextEncoder().encode('kwanxi-sync:');
+  const buf = new Uint8Array(pre.length + raw.length); buf.set(pre); buf.set(raw, pre.length);
+  return b64(new Uint8Array(await crypto.subtle.digest('SHA-256', buf)));
+}
+async function fetchRemote(revOnly){
+  const res = await fetch(SYNC_URL + (revOnly ? '?rev=1' : ''));
+  return res.json();
+}
+async function api(body){
+  // text/plain으로 보내야 Apps Script가 CORS 사전 요청 없이 받는다
+  const res = await fetch(SYNC_URL, {method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'}, body:JSON.stringify(body)});
+  return res.json();
+}
+function setSync(s){
+  const el = $('#syncState'); if (!el || !SYNC_URL) return;
+  const m = {ok:'☁ 구글시트에 저장됨', pending:'☁ 저장 대기…', saving:'☁ 저장 중…', offline:'⚠ 연결 안 됨 · 이 기기에만 저장됨', conflict:'⚠ 다른 기기와 충돌', error:'⚠ 구글시트 저장 실패'};
+  el.textContent = m[s] || ''; el.dataset.s = s; el.hidden = false;
+}
+async function pushRemote(blob, force){
+  if (syncing){ syncTimer = setTimeout(() => pushRemote(blob, force), 800); return; }
+  syncTimer = null; syncing = true; setSync('saving');
+  try {
+    const r = await api({token:syncToken, prevToken, baseRev:+ls.get(SYNC_REV) || 0, force:!!force, blob});
+    if (r.ok){ ls.set(SYNC_REV, r.rev); ls.del(DIRTY); prevToken = null; setSync('ok'); }
+    else if (r.error === 'conflict'){ setSync('conflict'); syncing = false; return resolveConflict(); }
+    else { setSync('error'); toast(r.error === 'token' ? '구글시트 쓰기 권한이 맞지 않아요 (비밀번호가 바뀌었나요?)' : '구글시트 저장에 실패했어요'); }
+  } catch(e){ setSync('offline'); }
+  syncing = false;
+}
+async function resolveConflict(){
+  const useRemote = confirm('다른 기기에서 먼저 저장한 내용이 구글시트에 있어요.\n\n[확인] 구글시트 내용으로 바꾸기 (이 기기에서 방금 고친 내용은 사라져요)\n[취소] 이 기기 내용으로 구글시트를 덮어쓰기');
+  if (useRemote){ if (await pullRemote()) toast('구글시트 내용으로 바꿨어요'); }
+  else pushRemote(await encrypt(cryptoKey, SEED_ENC.salt, db), true);
+}
+async function pullRemote(){
+  const r = await fetchRemote();
+  if (!r.blob) return false;
+  const d = await openBlob(r.blob, '구글시트'); if (!d) return false;
+  db = normalize(d);
+  ls.set(SYNC_REV, r.rev); ls.del(DIRTY);
+  await saveNow(r.blob.salt !== SEED_ENC.salt);   // 비밀번호가 바뀐 데이터면 새 비밀번호로 다시 올린다
+  render(); if (state.open) renderDrawer();
+  return true;
+}
+// 다른 기기에서 고친 내용을 이 창으로 돌아올 때 가져온다
+document.addEventListener('visibilitychange', async () => {
+  if (document.hidden || !SYNC_URL || !cryptoKey || saveTimer || syncTimer || syncing || ls.get(DIRTY)) return;
+  try {
+    const r = await fetchRemote(true);
+    if (r.rev > (+ls.get(SYNC_REV) || 0) && await pullRemote()) toast('다른 기기에서 바뀐 내용을 불러왔어요');
+  } catch(e){}
+});
+window.addEventListener('beforeunload', e => { if (saveTimer || syncTimer || syncing) e.preventDefault(); });
+
+/* ---------- 저장 ---------- */
 function persist(){ clearTimeout(saveTimer); saveTimer = setTimeout(saveNow, 300); }
-async function saveNow(){
+async function saveNow(push = true){
   saveTimer = null;
-  try { localStorage.setItem(ENC_KEY, JSON.stringify(await encrypt(cryptoKey, SEED_ENC.salt, db))); }
+  const blob = await encrypt(cryptoKey, SEED_ENC.salt, db);
+  try { localStorage.setItem(ENC_KEY, JSON.stringify(blob)); }
   catch(e){ toast(e.name === 'QuotaExceededError' ? '저장 공간이 부족해요. 사진 몇 장을 지워 주세요' : '저장 실패: 브라우저 저장소를 확인하세요'); }
+  if (SYNC_URL && push){
+    ls.set(DIRTY, '1'); setSync('pending');
+    clearTimeout(syncTimer); syncTimer = setTimeout(() => pushRemote(blob, false), 1200);
+  }
+  return blob;
 }
 
-// 이 기기에 저장된 데이터를 연다. 없으면 초기 데이터. pw는 비밀번호가 바뀐 경우 이전 데이터 복구용.
-async function loadData(key){
-  const seedData = await decrypt(key, SEED_ENC);
-  let raw = null; try { raw = localStorage.getItem(ENC_KEY); } catch(e){}
-  if (raw){
-    const blob = JSON.parse(raw);
-    if (blob.salt === SEED_ENC.salt){ try { return await decrypt(key, blob); } catch(e){} }
-    const old = prompt('이 기기에 이전 비밀번호로 저장된 데이터가 있어요.\n이전 비밀번호를 입력하면 그 데이터를 그대로 가져옵니다.\n(취소하면 처음 데이터로 시작하고, 이전 데이터는 지워져요)');
-    if (old){
-      try { return await decrypt(await deriveKey(old, blob.salt), blob); }
-      catch(e){ alert('이전 비밀번호가 맞지 않아 처음 데이터로 시작합니다.'); }
-    }
+// 암호문을 연다. 이전 비밀번호로 저장된 것이면 이전 비밀번호를 물어본다.
+async function openBlob(blob, where){
+  if (blob.salt === SEED_ENC.salt){ try { return await decrypt(cryptoKey, blob); } catch(e){} }
+  const old = prompt(`${where}에 이전 비밀번호로 저장된 데이터가 있어요.\n이전 비밀번호를 입력하면 그 데이터를 그대로 가져옵니다.`);
+  if (old){
+    try {
+      const oldKey = await deriveKey(old, blob.salt);
+      const d = await decrypt(oldKey, blob);
+      prevToken = await tokenOf(oldKey);   // 구글시트에 새 비밀번호로 다시 쓸 권한 증명용
+      return d;
+    } catch(e){ alert('이전 비밀번호가 맞지 않아요.'); }
   }
-  // 잠금 기능 이전 버전에서 암호화 없이 저장된 데이터가 있으면 가져온다
-  try { const legacy = JSON.parse(localStorage.getItem(KEY)); if (legacy && Array.isArray(legacy.people)) return legacy; } catch(e){}
-  return seedData;
+  return null;
+}
+async function loadLocal(){
+  const raw = ls.get(ENC_KEY);
+  if (raw){ const d = await openBlob(JSON.parse(raw), '이 기기'); if (d) return d; }
+  // 잠금 기능 이전 버전에서 암호화 없이 저장된 데이터
+  try { const legacy = JSON.parse(ls.get(KEY)); if (legacy && Array.isArray(legacy.people)) return legacy; } catch(e){}
+  return null;
 }
 async function openWith(key){
-  db = normalize(await loadData(key));
   cryptoKey = key;
-  await saveNow();
-  try { localStorage.removeItem(KEY); } catch(e){}
+  const seedData = await decrypt(key, SEED_ENC);
+  let d = null, push = false, force = false;
+  if (SYNC_URL){
+    syncToken = await tokenOf(key);
+    try {
+      const r = await fetchRemote();
+      // 이 기기에 아직 구글시트로 올라가지 않은 내용이 있는가 (오프라인 수정, 또는 동기화 전부터 쓰던 기기)
+      const unsynced = ls.get(ENC_KEY) && (ls.get(DIRTY) || ls.get(SYNC_REV) === null);
+      if (!r.blob){
+        d = await loadLocal(); push = true; ls.set(SYNC_REV, r.rev || 0);
+      } else if (unsynced && +ls.get(SYNC_REV) === r.rev){
+        d = await loadLocal(); push = true;
+      } else if (unsynced && !confirm('이 기기에 구글시트로 아직 올라가지 않은 내용이 있어요.\n\n[확인] 구글시트 내용 사용 (이 기기 내용은 사라져요)\n[취소] 이 기기 내용으로 구글시트를 덮어쓰기')){
+        d = await loadLocal(); push = force = true;
+      }
+      if (!d && r.blob){
+        d = await openBlob(r.blob, '구글시트');
+        if (d){ ls.set(SYNC_REV, r.rev); ls.del(DIRTY); push = r.blob.salt !== SEED_ENC.salt; }
+      }
+      setSync('ok');
+    } catch(e){ setSync('offline'); }
+  }
+  db = normalize(d || await loadLocal() || seedData);
+  const blob = await saveNow(false);
+  if (SYNC_URL && (push || ls.get(DIRTY))){ ls.set(DIRTY, '1'); pushRemote(blob, force); }
+  ls.del(KEY);
   document.body.classList.remove('locked');
   render();
 }
@@ -717,6 +822,7 @@ $('#lockForm').addEventListener('submit', async e => {
 });
 $('#btnLock').addEventListener('click', async () => {
   if (saveTimer){ clearTimeout(saveTimer); await saveNow(); }
+  if (syncTimer){ clearTimeout(syncTimer); await pushRemote(await encrypt(cryptoKey, SEED_ENC.salt, db), false); }
   try { localStorage.removeItem(KEYSTORE); sessionStorage.removeItem(KEYSTORE); } catch(e){}
   location.reload();
 });
